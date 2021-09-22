@@ -3,6 +3,8 @@
 const { test } = require('tap')
 const { Client, Pool, errors } = require('..')
 const { createServer } = require('http')
+const https = require('https')
+const pem = require('https-pem')
 const net = require('net')
 const { Readable } = require('stream')
 
@@ -1172,6 +1174,64 @@ test('headers overflow', t => {
       t.ok(err)
       t.equal(err.code, 'UND_ERR_HEADERS_OVERFLOW')
       t.end()
+    })
+  })
+})
+
+test('SocketError should expose socket details (net)', (t) => {
+  t.plan(8)
+
+  const server = createServer()
+
+  server.once('request', (req, res) => {
+    res.destroy()
+  })
+  t.teardown(server.close.bind(server))
+
+  server.listen(0, () => {
+    const client = new Client(`http://localhost:${server.address().port}`)
+    t.teardown(client.destroy.bind(client))
+
+    client.request({ path: '/', method: 'GET' }, (err, data) => {
+      t.ok(err instanceof errors.SocketError)
+      t.equal(err.socket.remoteFamily, 'IPv4')
+      t.equal(err.socket.localAddress, '127.0.0.1')
+      t.equal(err.socket.remoteAddress, '127.0.0.1')
+      t.type(err.socket.localPort, 'number')
+      t.type(err.socket.remotePort, 'number')
+      t.type(err.socket.bytesWritten, 'number')
+      t.type(err.socket.bytesRead, 'number')
+    })
+  })
+})
+
+test('SocketError should expose socket details (tls)', (t) => {
+  t.plan(8)
+
+  const server = https.createServer(pem)
+
+  server.once('request', (req, res) => {
+    res.destroy()
+  })
+  t.teardown(server.close.bind(server))
+
+  server.listen(0, () => {
+    const client = new Client(`https://localhost:${server.address().port}`, {
+      tls: {
+        rejectUnauthorized: false
+      }
+    })
+    t.teardown(client.destroy.bind(client))
+
+    client.request({ path: '/', method: 'GET' }, (err, data) => {
+      t.ok(err instanceof errors.SocketError)
+      t.equal(err.socket.remoteFamily, 'IPv4')
+      t.equal(err.socket.localAddress, '127.0.0.1')
+      t.equal(err.socket.remoteAddress, '127.0.0.1')
+      t.type(err.socket.localPort, 'number')
+      t.type(err.socket.remotePort, 'number')
+      t.type(err.socket.bytesWritten, 'number')
+      t.type(err.socket.bytesRead, 'number')
     })
   })
 })
